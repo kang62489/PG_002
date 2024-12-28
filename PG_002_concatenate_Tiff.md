@@ -1,12 +1,12 @@
 ---
 Established: 2024-12-21
 Last Updated: 2024-12-28
-Description: This python program is used to concatenate discrete tiff files exported by PCO.camware
+Description: This python program is used to concatenate the segments of TIFF files saved from PCO.camware
 tags:
   - python
   - img_process
 ---
-# Results
+# OUTPUT
 The program will automatically generate a folder "merged" (if it is exist, the program would delete it first) contains merged files start with prefix "m_".
 ![](<The auto-generated output folder.png>)
 ![](<merged files.png>)
