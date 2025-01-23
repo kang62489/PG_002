@@ -8,8 +8,8 @@ tags:
 ---
 # OUTPUT
 The program will automatically generate a folder "merged" (if it is exist, the program would delete it first) contains merged files start with prefix "m_".
-![](<The auto-generated output folder.png>)
-![](<merged files.png>)
+![600](<The auto-generated output folder.png>)
+![600](<merged files.png>)
 
 # MEMO
 - If the size of a single imaging file recorded during experiments over 2GB, the acquisition software -- pco.camware, would automatically divide the file into segments. To concatenate the discrete files, the python program "concatenate_TIFFs.py" were made to solve the issue.
