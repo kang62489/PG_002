@@ -7,11 +7,20 @@ import os, glob
 import skimage.io as skio
 import numpy as np
 from time import time
-from icecream import ic
-ic.configureOutput(prefix="debug | ", includeContext=False)
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QFileDialog, QApplication, QMessageBox
-        
+from rich.console import Console
+from rich.panel import Panel
+from rich.theme import Theme
+
+# Initialize rich console with custom theme
+custom_theme = Theme({
+    "info": "cyan",
+    "warning": "yellow",
+    "error": "red bold",
+    "success": "green",
+})
+console = Console(theme=custom_theme)
 
 ## Functions
 # 1. Generate a dialog to request file directory
@@ -40,109 +49,133 @@ def inCludeSubFolders():
     answer = dialog.exec()
 
     if answer == QMessageBox.Yes:
-        print("subfolders are included!")
+        console.print("[success]Subfolders are included!")
         return "Yes"
     else:
-        print("subfolders are ignored!")
+        console.print("[warning]Subfolders are ignored!")
         return "No"
 
-# Set event handler
-app = QApplication()
+def process_directory(directory, files_to_merge):
+    """Process files in a directory"""
+    if not files_to_merge:
+        console.print(f"[warning]No tif files in {directory} need to be merged.")
+        return
 
-# Get a directory of experiment data
-dir_expdata = get_folder()
+    # Check/create output folder
+    merged_dir = os.path.join(directory, "merged")
+    if os.path.isdir(merged_dir):
+        console.print("[info]Output folder exists.")
+    else:
+        os.mkdir(merged_dir)
+        console.print("[success]Output folder created.")
 
-# Request path of files
-if dir_expdata != None:
-    print("<Dir Selected>", dir_expdata)
-    # Check if include subfolers in the designate directory
+    for idx, file in enumerate(files_to_merge, 1):
+        t_start = time()
+        console.print(f"[cyan]Processing {file}.tif [{idx}/{len(files_to_merge)}]")
+
+        try:
+            # Load first segment
+            tif_segment_0 = skio.imread(os.path.join(directory, f"{file}.tif"))
+            order_of_tif_segment = 1
+
+            # Load and merge subsequent segments
+            while os.path.isfile(
+                os.path.join(directory, f"{file}@{order_of_tif_segment:04d}.tif")
+            ):
+                segment_path = os.path.join(
+                    directory, f"{file}@{order_of_tif_segment:04d}.tif"
+                )
+                tif_segment = skio.imread(segment_path)
+                tif_segment_0 = np.append(tif_segment_0, tif_segment, axis=0)
+                order_of_tif_segment += 1
+
+            # Save merged file
+            output_path = os.path.join(merged_dir, f"m_{file}.tif")
+            skio.imsave(
+                output_path, 
+                tif_segment_0.astype('uint16'), 
+                check_contrast=False
+            )
+
+            elapsed = round(time() - t_start, 2)
+            console.print(f"[success]Time elapsed: {elapsed}s")
+
+        except Exception as e:
+            console.print(f"[error]Error processing {file}: {str(e)}")
+
+def main():
+    # Initialize Qt application
+    app = QApplication()
+
+    # Get directory of experiment data
+    dir_expdata = get_folder()
+
+    if dir_expdata is None:
+        console.print("[error]No directory selected. Process cancelled!")
+        return
+
+    console.print(Panel(f"Selected Directory: {dir_expdata}", 
+                       title="[bold cyan]Directory Selection",
+                       border_style="cyan"))
+
+    # Process directories based on user choice
     includeSubDirs = inCludeSubFolders()
-    if includeSubDirs == "Yes":      
-        subFolders = next(os.walk(os.path.join(dir_expdata)))[1]
-        subFolders.insert(0,"")
+    
+    if includeSubDirs == "Yes":
+        subFolders = next(os.walk(dir_expdata))[1]
+        subFolders.insert(0, "")  # Include root directory
         if "merged" in subFolders:
             subFolders.remove("merged")
-        print("subfolders: ",subFolders)
-        for d in subFolders:
-            # Scan tifs and recs which need to be merged in each subfolder
-            dir_subfolders = os.path.join(dir_expdata,d)
-            list_of_tifs = [os.path.basename(i) for i in glob.glob(os.path.join(dir_subfolders,'*.tif'))]
-            list_of_recs_toBeMerged = [item.split("@")[0] for item in list_of_tifs if "@0001" in item]
-            
-            print('Files to be merged: ',list_of_recs_toBeMerged)
-
-            if list_of_recs_toBeMerged == []:
-                print("No tif file in", dir_subfolders, "needs to be merged.")
-            else:
-                # Check if output folder exist
-                if os.path.isdir(os.path.join(dir_subfolders,"merged")):
-                    print("Output folder exist.")
-                else:
-                    os.mkdir(os.path.join(dir_subfolders,"merged"))
-                    print("Output folder is created.")
-                
-                # Start to concatenate discrete tif files
-                for idx, file in enumerate(list_of_recs_toBeMerged):
-                    t_start = time()
-                    print("merging "+ file + ".tif " + f'[{idx+1:02d}/{len(list_of_recs_toBeMerged):02d}]')
-                    # Load the first segment of the file
-                    tif_segment_0 = skio.imread(os.path.join(dir_subfolders, file + ".tif"))
-                    
-                    # The counter of the segment, start from 0001
-                    order_of_tif_segment = 1
-                    
-                    # Keep load and merge file@000X to file
-                    while(os.path.isfile(os.path.join(dir_subfolders, file+"@"+"{:04d}".format(order_of_tif_segment) + ".tif"))):
-                        tif_segment = skio.imread(os.path.join(dir_subfolders, file+"@"+"{:04d}".format(order_of_tif_segment) + ".tif"))
-                        tif_segment_0 = np.append(tif_segment_0, tif_segment, axis=0)
-                        order_of_tif_segment += 1
-                    
-                    skio.imsave(os.path.join(dir_subfolders,"merged", "m_"+file+".tif"), tif_segment_0.astype('uint16'), check_contrast=False)
-                    print("Time elapsed: ", round(time()-t_start,2), "s")    
-        print("Merging Completed!!")
-        # prompt = input("\n<<Press Enter to exit>>")
-    else:
-        # Scan tifs and recs which need to be merged in the directory
-        list_of_tifs = [os.path.basename(i) for i in glob.glob(os.path.join(dir_expdata,'*.tif'))]
-        list_of_recs_toBeMerged = [item.split("@")[0] for item in list_of_tifs if "@0001" in item]
         
-        print('Files to be merged: ',list_of_recs_toBeMerged)
+        console.print(Panel(
+            "\n".join(subFolders) or "No subfolders found",
+            title="[bold cyan]Subfolders to Process",
+            border_style="cyan"
+        ))
 
-        if list_of_recs_toBeMerged == []:
-            print("No tif file in", dir_expdata, "needs to be merged.")
-        else:
-            # Check if output folder exist
-            if os.path.isdir(os.path.join(dir_expdata,"merged")):
-                print("Output folder exist.")
-            else:
-                os.mkdir(os.path.join(dir_expdata,"merged"))
-                print("Output folder is created.")
+        for d in subFolders:
+            dir_subfolders = os.path.join(dir_expdata, d)
+            console.print(f"\n[bold cyan]Processing directory: {dir_subfolders}")
             
-            # Start to concatenate discrete tif files
-            for idx, file in enumerate(list_of_recs_toBeMerged):
-                t_start = time()
-                print("merging "+ file + ".tif " + f'[{idx+1:02d}/{len(list_of_recs_toBeMerged):02d}]')
-                # Load the first segment of the file
-                tif_segment_0 = skio.imread(os.path.join(dir_expdata, file + ".tif"))
-                
-                # The counter of the segment, start from 0001
-                order_of_tif_segment = 1
-                
-                # Keep load and merge file@000X to file
-                while(os.path.isfile(os.path.join(dir_expdata, file+"@"+"{:04d}".format(order_of_tif_segment) + ".tif"))):
-                    tif_segment = skio.imread(os.path.join(dir_expdata, file+"@"+"{:04d}".format(order_of_tif_segment) + ".tif"))
-                    tif_segment_0 = np.append(tif_segment_0, tif_segment, axis=0)
-                    order_of_tif_segment += 1
-                
-                # tifftools.write_tiff(tif_segment_0,os.path.join(dir_expdata,"merged", "m_"+file+".tif"), tif_segment_0.astype('uint16'), check_contrast=False)
-                skio.imsave(os.path.join(dir_expdata,"merged", "m_"+file+".tif"), tif_segment_0.astype('uint16'), check_contrast=False)
-                print("Time elapsed: ", round(time()-t_start,2), "s")
-                    # bar_current()
-            print("Merging Completed!!")
-            # prompt = input("\n<<Press Enter to exit>>")
-else:
-    print('Selected directory = ',dir_expdata)
-    print("Process cancelled!")
-    # prompt = input("\n<<Press Enter to exit>>")
+            # Get files to merge
+            list_of_tifs = [
+                os.path.basename(i) 
+                for i in glob.glob(os.path.join(dir_subfolders, '*.tif'))
+            ]
+            files_to_merge = [
+                item.split("@")[0] 
+                for item in list_of_tifs 
+                if "@0001" in item
+            ]
+            
+            console.print(Panel(
+                "\n".join(files_to_merge) or "No files to merge",
+                title="[bold cyan]Files to Merge",
+                border_style="cyan"
+            ))
+            
+            process_directory(dir_subfolders, files_to_merge)
+    else:
+        # Process only main directory
+        list_of_tifs = [
+            os.path.basename(i) 
+            for i in glob.glob(os.path.join(dir_expdata, '*.tif'))
+        ]
+        files_to_merge = [
+            item.split("@")[0] 
+            for item in list_of_tifs 
+            if "@0001" in item
+        ]
+        
+        console.print(Panel(
+            "\n".join(files_to_merge) or "No files to merge",
+            title="[bold cyan]Files to Merge",
+            border_style="cyan"
+        ))
+        
+        process_directory(dir_expdata, files_to_merge)
 
-            
+    console.print("\n[bold green]Merging Completed![/]")
+
+if __name__ == "__main__":
+    main()            
