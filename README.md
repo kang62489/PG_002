@@ -35,5 +35,5 @@ The program will automatically generate a folder "merged" (if it is exist, the p
 - PG_002_concatenate_Tiff.md removed.
 - Function of printing messages in the code is changed from icecream to rich.
 - Code structure is optimized by Augment Code.
-> [!info]
+> [!note]
 > The latest version in my GUI for experiments doesn't need the .rec files.
