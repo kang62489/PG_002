@@ -4,7 +4,7 @@
 
 ## Modules
 import os, glob
-import skimage.io as skio
+import tifffile
 import numpy as np
 from time import time
 from PySide6.QtGui import QFont
@@ -74,29 +74,21 @@ def process_directory(directory, files_to_merge):
         console.print(f"[cyan]Processing {file}.tif [{idx}/{len(files_to_merge)}]")
 
         try:
-            # Load first segment
-            tif_segment_0 = skio.imread(os.path.join(directory, f"{file}.tif"))
-            order_of_tif_segment = 1
-
-            # Load and merge subsequent segments
-            while os.path.isfile(
-                os.path.join(directory, f"{file}@{order_of_tif_segment:04d}.tif")
-            ):
-                segment_path = os.path.join(
-                    directory, f"{file}@{order_of_tif_segment:04d}.tif"
-                )
-                tif_segment = skio.imread(segment_path)
-                tif_segment_0 = np.append(tif_segment_0, tif_segment, axis=0)
-                order_of_tif_segment += 1
-
+            # Use tifffile to read all segments and concatenate at once
+            segments = [tifffile.imread(os.path.join(directory, f"{file}.tif"))]
+            order = 1
+            
+            while os.path.isfile(os.path.join(directory, f"{file}@{order:04d}.tif")):
+                segments.append(tifffile.imread(os.path.join(directory, f"{file}@{order:04d}.tif")))
+                order += 1
+                
+            # Concatenate all at once (faster than repeated appends)
+            merged_tiff = np.concatenate(segments, axis=0)
+            
             # Save merged file
             output_path = os.path.join(merged_dir, f"m_{file}.tif")
-            skio.imsave(
-                output_path, 
-                tif_segment_0.astype('uint16'), 
-                check_contrast=False
-            )
-
+            tifffile.imwrite(output_path, merged_tiff.astype('uint16'))
+            
             elapsed = round(time() - t_start, 2)
             console.print(f"[success]Time elapsed: {elapsed}s")
 
